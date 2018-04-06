@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/bin/bash -ex
 cd "$(dirname "$0")"
-exec 0< $2 # source.jpg
-exec 1> $4 # target.jpg
-LD_PRELOAD=./jail LANG=C ./magick convert -delete 1--1 -strip -limit Disk 0 -limit Map 0 -limit Memory 50M -limit Width 9999 -limit Height 9999 $1:-[0] $3:-
+exec {source}< $2 # source.jpg
+exec {target}> $4 # target.jpg
+LD_LIBRARY_PATH=./bin LD_PRELOAD=./bin/jail LANG=C ./bin/vips --vips-concurrency=1 resize "/proc/self/fd/${source}" "/proc/self/fd/${target}.jpeg" 1
 
-# SYSCALL_DEBUG=1 strace -eopen,openat -E LD_PRELOAD=./a.out
+# SYSCALL_DEBUG=1 strace -eopen,openat -E LD_PRELOAD=./jail
+

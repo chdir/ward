@@ -28,6 +28,8 @@
 
 #define VERSION "1"
 
+#define O_TMPFILE_MASK (__O_TMPFILE | O_DIRECTORY | O_CREAT)
+
 #define PRINT(fmt, ...) do {\
   char* tempStr; \
   if (asprintf(&tempStr, fmt, ##__VA_ARGS__) != -1) { \
@@ -87,8 +89,15 @@ static void load_seccomp(uint32_t def_action) {
 
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_write, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_read, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_preadv, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_pwritev, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_pread64, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_pwrite64, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_lseek, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR__llseek, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_brk, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_mmap, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_munmap, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_getrusage, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_getpid, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_fstat, 0));
@@ -97,25 +106,28 @@ static void load_seccomp(uint32_t def_action) {
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_rt_sigreturn, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_exit, 0));
 
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_dup, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_close, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_umask, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_getcwd, 0));
+
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_mprotect, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_madvise, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_clone, 0));
+
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_futex, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_get_robust_list, 0));
+
+  check(seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), __NR_open, 1, SCMP_CMP(1, SCMP_CMP_MASKED_EQ, O_TMPFILE_MASK, 0)));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), __NR_openat, 1, SCMP_CMP(1, SCMP_CMP_MASKED_EQ, O_TMPFILE_MASK, 0)));
+
+  check(seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EOPNOTSUPP), __NR_ioctl, 0));
 
   check(seccomp_load(ctx));
 }
 
 static void debug_setup() {
   DEBUGX("Loading debug security filter");
-
-  /*
-  struct kernel_sigaction handler = {
-    .sa_sigaction_ = sighandler,
-    .sa_flags = SA_SIGINFO,
-  };
-
-  if (sys_sigaction(SIGSYS, &handler, NULL)) errx(EXIT_FAILURE, "signal init");
-
-  load_seccomp(SCMP_ACT_TRAP);
-  */
 
   load_seccomp(SCMP_ACT_TRACE(ENOENT));
 }
@@ -149,15 +161,20 @@ static void hookStart() {
   limit.rlim_max = 0,
   setrlimit(RLIMIT_CORE, &limit);
 
-  // up to 100M of memory per process
-  //limit.rlim_cur = 100 * 1024 * 1024,
-  //limit.rlim_max = 100 * 1024 * 1024,
-  //setrlimit(RLIMIT_DATA, &limit);
+  // up to 50M of memory per process
+  limit.rlim_cur = 50 * 1024 * 1024,
+  limit.rlim_max = 50 * 1024 * 1024,
+  setrlimit(RLIMIT_DATA, &limit);
 
-  // up to 20M of stack per process
-  limit.rlim_cur = 20 * 1024 * 1024,
-  limit.rlim_max = 20 * 1024 * 1024,
+  // up to 40M of stack per process
+  limit.rlim_cur = 40 * 1024 * 1024,
+  limit.rlim_max = 40 * 1024 * 1024,
   setrlimit(RLIMIT_STACK, &limit);
+
+  // up to 200M of disk space
+  limit.rlim_cur = 200 * 1024 * 1024,
+  limit.rlim_max = 200 * 1024 * 1024,
+  setrlimit(RLIMIT_FSIZE, &limit);
 
   char* debugFilter = secure_getenv("SYSCALL_DEBUG");
   if (debugFilter != NULL && !strcmp(debugFilter, "1")) {
