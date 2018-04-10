@@ -28,7 +28,7 @@
 
 #define VERSION "1"
 
-#define O_TMPFILE_MASK (__O_TMPFILE | O_DIRECTORY | O_CREAT)
+#define O_TMPFILE_MASK (__O_TMPFILE | O_DIRECTORY)
 
 #define PRINT(fmt, ...) do {\
   char* tempStr; \
@@ -95,6 +95,8 @@ static void load_seccomp(uint32_t def_action) {
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_pwrite64, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_lseek, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR__llseek, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_ftruncate, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_ftruncate64, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_brk, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_mmap, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_munmap, 0));
@@ -117,9 +119,10 @@ static void load_seccomp(uint32_t def_action) {
 
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_futex, 0));
   check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_get_robust_list, 0));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_set_robust_list, 0));
 
-  check(seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), __NR_open, 1, SCMP_CMP(1, SCMP_CMP_MASKED_EQ, O_TMPFILE_MASK, 0)));
-  check(seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), __NR_openat, 1, SCMP_CMP(1, SCMP_CMP_MASKED_EQ, O_TMPFILE_MASK, 0)));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_open, 1, SCMP_CMP(1, SCMP_CMP_MASKED_EQ, (scmp_datum_t) O_TMPFILE_MASK, O_TMPFILE_MASK)));
+  check(seccomp_rule_add(ctx, SCMP_ACT_ALLOW, __NR_openat, 1, SCMP_CMP(2, SCMP_CMP_MASKED_EQ, (scmp_datum_t) O_TMPFILE_MASK, O_TMPFILE_MASK)));
 
   check(seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EOPNOTSUPP), __NR_ioctl, 0));
 
@@ -151,9 +154,9 @@ static void hookStart() {
   // thanks to filter, preventing further serlimit calls
   struct rlimit limit = {};
 
-  // at most 5 seconds of CPU time
-  limit.rlim_cur = 5,
-  limit.rlim_max = 5,
+  // at most 6 seconds of CPU time
+  limit.rlim_cur = 6,
+  limit.rlim_max = 6,
   setrlimit(RLIMIT_CPU, &limit);
 
   // no core dumps
@@ -161,14 +164,14 @@ static void hookStart() {
   limit.rlim_max = 0,
   setrlimit(RLIMIT_CORE, &limit);
 
-  // up to 50M of memory per process
+  // up to 100M of memory per process
   limit.rlim_cur = 50 * 1024 * 1024,
   limit.rlim_max = 50 * 1024 * 1024,
   setrlimit(RLIMIT_DATA, &limit);
 
-  // up to 40M of stack per process
-  limit.rlim_cur = 40 * 1024 * 1024,
-  limit.rlim_max = 40 * 1024 * 1024,
+  // up to 60M of stack per process
+  limit.rlim_cur = 50 * 1024 * 1024,
+  limit.rlim_max = 50 * 1024 * 1024,
   setrlimit(RLIMIT_STACK, &limit);
 
   // up to 200M of disk space
